@@ -275,5 +275,6 @@ def create_excel_file(table_data, filename="calendar_data.xlsx"):
 
 # Llamar a la función con datos de ejemplo
 create_excel_file(table_data)
+print(table_data)
 
 driver.quit()
