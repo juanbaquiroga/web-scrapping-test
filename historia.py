@@ -1,6 +1,5 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
@@ -8,6 +7,7 @@ import calendar
 from collections import defaultdict
 from datetime import datetime
 from openpyxl import Workbook
+from openpyxl.styles import Border, Side
 from openpyxl.utils import get_column_letter
 
 
@@ -21,13 +21,6 @@ driver = webdriver.Chrome()
 
 # funcion para esperar que cargue la tabla
 def wait_for_loader_to_disappear(driver, timeout=20):
-    """
-    Espera hasta que el componente loader desaparezca de la pantalla.
-
-    Args:
-        driver: El controlador de Selenium.
-        timeout: Tiempo máximo para esperar en segundos.
-    """
     WebDriverWait(driver, timeout).until(
         EC.invisibility_of_element((By.CLASS_NAME, "http-loader__wrapper"))
     )
@@ -180,106 +173,107 @@ while has_next_page(driver):
 # Estructura para almacenar los datos organizados por año, mes y los registros
 calendar_data = defaultdict(lambda: defaultdict(list))
 
-# Función para analizar las fechas de cada registro
-def add_to_calendar(data):
-    for item in data:
+# Función para aplicar una línea horizontal gruesa
+def apply_horizontal_line(ws, row, columns, border_type="thick"):
+    side = Side(style=border_type)
+    border = Border(bottom=side)
+    for col in columns:
+        ws.cell(row=row, column=col).border = border
+
+# Función para generar la hoja organizada por años y meses
+def create_calendar_sheet(wb, table_data):
+    ws_calendar = wb.create_sheet(title="Calendario")
+    months = [calendar.month_name[i][:3] for i in range(1, 13)]
+
+    # Encabezados de los meses
+    for i, month in enumerate(months, start=2):
+        ws_calendar.cell(row=1, column=i).value = month
+
+    calendar_data = defaultdict(lambda: defaultdict(list))
+
+    # Llenar el diccionario con los datos
+    for item in table_data:
         secuencia, regimen, revista, enseñanza, cargo, horas, fecha, distrito, organizacion, numero_escuela, etc = item
-        
-        # Extraemos las fechas
         fecha_inicio, fecha_fin = fecha.split(" al ")
         fecha_inicio = datetime.strptime(fecha_inicio, "%d/%m/%Y")
         fecha_fin = datetime.strptime(fecha_fin, "%d/%m/%Y")
-        
-        # Recorremos los meses desde la fecha de inicio hasta la fecha final
+
         for year in range(fecha_inicio.year, fecha_fin.year + 1):
             for month in range(1, 13):
-                if (year == fecha_inicio.year and month >= fecha_inicio.month) or (year > fecha_inicio.year and year < fecha_fin.year) or (year == fecha_fin.year and month <= fecha_fin.month):
-                    month_name = calendar.month_name[month]
+                if (year == fecha_inicio.year and month >= fecha_inicio.month) or \
+                   (year > fecha_inicio.year and year < fecha_fin.year) or \
+                   (year == fecha_fin.year and month <= fecha_fin.month):
                     record = f"{secuencia} - {organizacion} {numero_escuela} - {horas if horas != 'sin cargar' else 'sin cargar'}"
                     calendar_data[year][month].append(record)
 
-# Llamamos a la función para llenar el calendario
-add_to_calendar(table_data)
-# Función para generar el archivo Excel
-def create_excel_from_table_data(table_data, filename="calendar_data.xlsx"):
-    # Crear un libro de trabajo y una hoja activa
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Calendario"
-
-    # Escribir encabezados de los meses en la primera fila
-    months = [calendar.month_name[i][:3] for i in range(1, 13)]
-    for i, month in enumerate(months, start=2):
-        cell = ws.cell(row=1, column=i)
-        cell.value = month
-        cell.alignment = cell.alignment.copy(horizontal="center")
-
-    # Estructura para almacenar los datos organizados por año, mes y los registros
-    calendar_data = defaultdict(lambda: defaultdict(list))
-
-    # Función para analizar las fechas de cada registro y organizarlos
-    def add_to_calendar(data):
-        for item in data:
-            secuencia, regimen, revista, enseñanza, cargo, horas, fecha, distrito, organizacion, numero_escuela, etc = item
-            
-            # Extraemos las fechas
-            fecha_inicio, fecha_fin = fecha.split(" al ")
-            fecha_inicio = datetime.strptime(fecha_inicio, "%d/%m/%Y")
-            fecha_fin = datetime.strptime(fecha_fin, "%d/%m/%Y")
-            
-            # Recorremos los meses desde la fecha de inicio hasta la fecha final
-            for year in range(fecha_inicio.year, fecha_fin.year + 1):
-                for month in range(1, 13):
-                    if (year == fecha_inicio.year and month >= fecha_inicio.month) or (year > fecha_inicio.year and year < fecha_fin.year) or (year == fecha_fin.year and month <= fecha_fin.month):
-                        month_name = calendar.month_name[month]
-                        record = f"{secuencia} - {organizacion} {numero_escuela} - {horas if horas != 'sin cargar' else 'sin cargar'}"
-                        calendar_data[year][month].append(record)
-
-    # Llamamos a la función para organizar los datos
-    add_to_calendar(table_data)
-
-    # Escribir los datos por año
-    row_num = 2  # Empezamos desde la segunda fila (debajo de los meses)
+    # Escribir datos en la hoja
+    row_num = 2
     for year, months_data in calendar_data.items():
-        # Escribir el año en la primera columna
-        ws.cell(row=row_num, column=1, value=year)
-        row_num += 1  # Ir a la siguiente fila después de escribir el año
+        # Aplicar línea gruesa antes del año
+        if row_num > 2:  # Saltear la primera fila
+            apply_horizontal_line(ws_calendar, row_num - 1, range(1, 14))
 
-        # Escribir los registros de cada mes
-        max_rows = 0  # Para controlar la cantidad máxima de registros por mes
+        # Añadir el año
+        ws_calendar.cell(row=row_num, column=1).value = year
+        row_num += 1
+
+        max_rows = 0
         for month in range(1, 13):
-            column = month + 1  # Los meses empiezan en la columna 2
+            column = month + 1
             if month in months_data:
                 records = months_data[month]
-                max_rows = max(max_rows, len(records))  # Actualizamos la cantidad máxima de registros por mes
-                # Escribir cada registro en una nueva fila debajo del mes correspondiente
+                max_rows = max(max_rows, len(records))
                 for idx, record in enumerate(records, start=row_num):
-                    ws.cell(row=idx, column=column, value=record)
+                    ws_calendar.cell(row=idx, column=column).value = record
 
-        # Después de cada año, ajustar la fila de inicio para el siguiente año
-        row_num += max_rows  # Moverse a la siguiente fila después de escribir todos los registros
+        row_num += max_rows
 
-        # Dejar espacio en blanco solo después de cada año
-        row_num += 1  # Esto asegura que haya una fila vacía entre los años.
-
-    # Ajustar el tamaño de las columnas
-    for col in range(1, 14):  # 13 columnas (A - M)
+    # Ajustar ancho de columnas
+    for col in range(1, 14):
         column_letter = get_column_letter(col)
         max_length = 0
-        for row in ws.iter_rows(min_col=col, max_col=col):
+        for row in ws_calendar.iter_rows(min_col=col, max_col=col):
             for cell in row:
                 if cell.value:
                     max_length = max(max_length, len(str(cell.value)))
-        adjusted_width = (max_length + 2)  # Añadir un poco de margen
-        ws.column_dimensions[column_letter].width = adjusted_width
+        ws_calendar.column_dimensions[column_letter].width = max_length + 2
 
-    # Guardar el archivo Excel
+# Función para generar la hoja con datos crudos
+def create_raw_data_sheet(wb, table_data):
+    ws_raw = wb.create_sheet(title="Datos Originales")
+    headers = ["Secuencia", "Regimen", "Revista", "Enseñanza", "Cargo", "Horas", "Fecha", "Distrito", "Organización", "Número Escuela", "Etc"]
+
+    # Escribir cabeceras
+    ws_raw.append(headers)
+
+    # Escribir datos
+    for item in table_data:
+        ws_raw.append(item)
+
+    # Ajustar ancho de columnas
+    for col in range(1, len(headers) + 1):
+        column_letter = get_column_letter(col)
+        max_length = 0
+        for row in ws_raw.iter_rows(min_col=col, max_col=col):
+            for cell in row:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+        ws_raw.column_dimensions[column_letter].width = max_length + 2
+
+# Función principal para generar el archivo Excel
+def create_excel_file(table_data, filename="calendar_data.xlsx"):
+    wb = Workbook()
+    wb.remove(wb.active)  # Quitar la hoja predeterminada
+
+    # Crear ambas hojas
+    create_calendar_sheet(wb, table_data)
+    create_raw_data_sheet(wb, table_data)
+
+    # Guardar el archivo
     wb.save(filename)
     print(f"Archivo {filename} guardado correctamente.")
 
-# Llamamos a la función para generar el Excel con los datos
-create_excel_from_table_data(table_data)
+# Llamar a la función con datos de ejemplo
+create_excel_file(table_data)
 
-
-time.sleep(9)
 driver.quit()
