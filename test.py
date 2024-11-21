@@ -102,12 +102,13 @@ class LoginScreen(BoxLayout):
 
 
 def process_data(username, password):
-    # Configurar el WebDriver2
+    # Configurar el WebDriver
     chrome_options = Options()
     chrome_options.add_argument("--incognito")  # Abrir en modo incógnito
     driver = webdriver.Chrome(options=chrome_options)
+
     # Función para esperar que desaparezca el loader
-    def wait_for_loader_to_disappear(driver, timeout=20):
+    def wait_for_loader_to_disappear(driver, timeout=25):
         WebDriverWait(driver, timeout).until(
             EC.invisibility_of_element((By.CLASS_NAME, "http-loader__wrapper"))
         )
@@ -117,13 +118,13 @@ def process_data(username, password):
         # Localizar la tabla por su selector
         table = driver.find_element(
             By.CSS_SELECTOR, "table[ng-table='tableParams']")
-
+        
         # Obtener todas las filas de la tabla
         rows = table.find_elements(By.TAG_NAME, "tr")
 
         # Inicializar una lista para almacenar los datos de la tabla
         table_data = []
-
+        time.sleep(2)
         # Recorrer las filas de la tabla
         for row in rows:
             # Obtener todas las celdas de la fila
