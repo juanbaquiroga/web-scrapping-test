@@ -120,11 +120,11 @@ def process_data(username, password):
             By.CSS_SELECTOR, "table[ng-table='tableParams']")
         
         # Obtener todas las filas de la tabla
+        time.sleep(2)
         rows = table.find_elements(By.TAG_NAME, "tr")
 
         # Inicializar una lista para almacenar los datos de la tabla
         table_data = []
-        time.sleep(2)
         # Recorrer las filas de la tabla
         for row in rows:
             # Obtener todas las celdas de la fila
