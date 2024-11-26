@@ -1,26 +1,33 @@
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.textinput import TextInput
-from kivy.uix.popup import Popup
-from kivy.metrics import dp
-from kivy.clock import Clock
-from kivy.core.window import Window
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import sys
+import time
+import calendar
+import threading
+from datetime import datetime
+from collections import defaultdict
+
 from openpyxl import Workbook
 from openpyxl.styles import Border, Side
 from openpyxl.utils import get_column_letter
-from collections import defaultdict
-from datetime import datetime
-import time
-import calendar
-import sys
+from openpyxl.styles import Border, Side, Alignment
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+from kivy.app import App
+from kivy.metrics import dp
+from kivy.clock import Clock
+from kivy.uix.popup import Popup
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.core.window import Window
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.textinput import TextInput
+from kivy.uix.progressbar import ProgressBar
+
+
 
 class LoginScreen(BoxLayout):
     def __init__(self, **kwargs):
@@ -79,15 +86,34 @@ class LoginScreen(BoxLayout):
             self.show_popup("Error", "Por favor, complete ambos campos.")
             return
 
-        popup = self.show_popup("Información", "El proceso ha comenzado. Esto puede tardar unos minutos.")
-        Clock.schedule_once(lambda dt: popup.dismiss(), 3)  # Cerrar automáticamente en 3 segundos
+        # Mostrar la pantalla de carga
+        self.loading_popup = self.show_loading_popup("Procesando", "Por favor, espere mientras se generan los datos...")
+        
+        # Ejecutar el proceso en un hilo separado
+        threading.Thread(target=self.run_process, args=(username, password)).start()
 
-        process_data(username, password)
-        Clock.schedule_once(self.finish_process, 5)  # Simula el final del proceso después de 5 segundos
+    def run_process(self, username, password):
+        try:
+            process_data(username, password)  # Llamar a la función de procesamiento principal
+            # Usar Clock para interactuar con la interfaz desde el hilo
+            Clock.schedule_once(self.finish_process, 0)
+        except Exception as e:
+            Clock.schedule_once(lambda dt: self.show_popup("Error", str(e)), 0)
+        finally:
+            Clock.schedule_once(lambda dt: self.loading_popup.dismiss(), 0)
 
     def finish_process(self, dt):
         popup = self.show_popup("Éxito", "El archivo Excel se generó correctamente.")
         popup.bind(on_dismiss=lambda instance: sys.exit(0))  # Salir de la app al cerrar el popup
+
+    def show_loading_popup(self, title, message):
+        popup_content = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(20))
+        popup_content.add_widget(Label(text=message, size_hint=(1, None), height=dp(40)))
+        progress = ProgressBar(max=1, value=0)
+        popup_content.add_widget(progress)
+        popup = Popup(title=title, content=popup_content, size_hint=(0.8, None), height=dp(200))
+        popup.open()
+        return popup
 
     def show_popup(self, title, message):
         popup_content = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(20))
@@ -99,12 +125,11 @@ class LoginScreen(BoxLayout):
         popup.open()
         return popup
 
-
-
 def process_data(username, password):
     # Configurar el WebDriver
     chrome_options = Options()
     chrome_options.add_argument("--incognito")  # Abrir en modo incógnito
+    chrome_options.add_argument("--headless")
     driver = webdriver.Chrome(options=chrome_options)
 
     # Función para esperar que desaparezca el loader
@@ -281,72 +306,104 @@ def process_data(username, password):
 
         # Obtener los datos de la página actual
         table_data.extend(get_table_data(driver))
-
-    # Función para aplicar una línea horizontal gruesa
-    def apply_horizontal_line(ws, row, columns, border_type="thick"):
-        side = Side(style=border_type)
-        border = Border(bottom=side)
-        for col in columns:
-            ws.cell(row=row, column=col).border = border
+    
+    # Ordenamos los datos por año y mes.
+    calendar_data = ordenar_datos_por_ano_y_mes(table_data)
 
 
-    # Función para generar la hoja organizada por años y meses
-    def create_calendar_sheet(wb, table_data):
-        ws_calendar = wb.create_sheet(title="Calendario")
+    # Generar la hoja de Historia Laboral
+    def generate_calendar_sheet(workbook, data):
+        """
+        Genera una hoja de Excel con los años y meses como especificaste.
+
+        Args:
+            workbook: El objeto Workbook de openpyxl donde se añadirá la hoja.
+            data: Un diccionario con la estructura especificada:
+                {
+                    año: {
+                        mes: [
+                            [secuencia, organizacion, numero, horas],
+                            ...
+                        ],
+                        ...
+                    },
+                    ...
+                }
+        """
+        # Crear una nueva hoja
+        ws = workbook.create_sheet("Historia Laboral")
+        
         months = [calendar.month_name[i][:3] for i in range(1, 13)]
 
         # Encabezados de los meses
         for i, month in enumerate(months, start=2):
-            ws_calendar.cell(row=1, column=i).value = month
+            ws.cell(row=1, column=i).value = month
+        
+        row_num = 2  # Comienza en la segunda fila para los datos
+        for year, months_data in sorted(data.items()):  # Ordenar los años
+            # Insertar el año en la primera columna
+            ws.cell(row=row_num, column=1).value = year
+            start_row = row_num
+            
+            # Aplicar línea gruesa si no es la primera fila
+            if row_num > 2:
+                apply_thick_border(ws, row=row_num - 1, columns=range(1, 14))
+            
+            # Añadir los datos de cada mes
+            max_row_offset = 0  # Para rastrear la cantidad máxima de filas ocupadas por los meses
+            for month_idx, month_records in months_data.items():
+                col = month_idx + 1  # La columna correspondiente al mes
+                for idx, record in enumerate(month_records):
+                    # Añadir cada registro debajo del encabezado del mes
+                    ws.cell(row=row_num + idx, column=col).value = " - ".join(map(str, record))
+                # Rastrea el mayor número de filas que un mes ocupa
+                max_row_offset = max(max_row_offset, len(month_records))
+            
+            # Avanza las filas según el mayor número de registros por mes
+            row_num += max_row_offset
 
-        calendar_data = defaultdict(lambda: defaultdict(list))
+            if row_num > start_row:  # Solo si hay registros
+                ws.merge_cells(
+                    start_row=start_row, start_column=1, end_row=row_num - 1, end_column=1
+                )
+                year_cell = ws.cell(row=start_row, column=1)
+                year_cell.value = year
+                year_cell.alignment = Alignment(vertical="top", horizontal="center") 
 
-        # Llenar el diccionario con los datos
-        for item in table_data:
-            secuencia, regimen, revista, enseñanza, cargo, horas, fecha, distrito, organizacion, numero_escuela, etc = item
-            fecha_inicio, fecha_fin = fecha.split(" al ")
-            fecha_inicio = datetime.strptime(fecha_inicio, "%d/%m/%Y")
-            fecha_fin = datetime.strptime(fecha_fin, "%d/%m/%Y")
+        # Ajustar el ancho de las columnas
+        adjust_column_width(ws)
 
-            for year in range(fecha_inicio.year, fecha_fin.year + 1):
-                for month in range(1, 13):
-                    if (year == fecha_inicio.year and month >= fecha_inicio.month) or \
-                        (year > fecha_inicio.year and year < fecha_fin.year) or \
-                        (year == fecha_fin.year and month <= fecha_fin.month):
-                        record = f"{secuencia} - {organizacion} {numero_escuela} - {horas if horas != 'sin cargar' else 'sin cargar'}"
-                        calendar_data[year][month].append(record)
+    def apply_thick_border(worksheet, row, columns):
+        """
+        Aplica una línea horizontal gruesa en una fila específica.
 
-        # Escribir datos en la hoja
-        row_num = 2
-        for year, months_data in calendar_data.items():
-            # Aplicar línea gruesa antes del año
-            if row_num > 2:  # Saltear la primera fila
-                apply_horizontal_line(ws_calendar, row_num - 1, range(1, 14))
+        Args:
+            worksheet: La hoja de trabajo de openpyxl.
+            row: La fila donde se aplicará la línea gruesa.
+            columns: Un iterable con los índices de las columnas para aplicar la línea.
+        """
+        thick_border = Border(bottom=Side(style="thick"))
+        for col in columns:
+            worksheet.cell(row=row, column=col).border = thick_border
 
-            # Añadir el año
-            ws_calendar.cell(row=row_num, column=1).value = year
-            row_num += 1
+    def adjust_column_width(worksheet):
+        """
+        Ajusta el ancho de las columnas de una hoja en base al contenido.
 
-            max_rows = 0
-            for month in range(1, 13):
-                column = month + 1
-                if month in months_data:
-                    records = months_data[month]
-                    max_rows = max(max_rows, len(records))
-                    for idx, record in enumerate(records, start=row_num):
-                        ws_calendar.cell(row=idx, column=column).value = record
-
-            row_num += max_rows
-
-        # Ajustar ancho de columnas
-        for col in range(1, 14):
-            column_letter = get_column_letter(col)
+        Args:
+            worksheet: La hoja de trabajo de openpyxl a ajustar.
+        """
+        for col in worksheet.columns:
             max_length = 0
-            for row in ws_calendar.iter_rows(min_col=col, max_col=col):
-                for cell in row:
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                try:
                     if cell.value:
                         max_length = max(max_length, len(str(cell.value)))
-            ws_calendar.column_dimensions[column_letter].width = max_length + 2
+                except:
+                    pass
+            worksheet.column_dimensions[col_letter].width = max_length + 2
+
 
 
     # Función para generar la hoja con datos crudos
@@ -378,8 +435,8 @@ def process_data(username, password):
         wb.remove(wb.active)  # Quitar la hoja predeterminada
 
         # Crear ambas hojas
-        create_calendar_sheet(wb, table_data)
         create_raw_data_sheet(wb, table_data)
+        generate_calendar_sheet(wb, calendar_data)
 
         # Guardar el archivo
         wb.save(filename)
@@ -387,10 +444,7 @@ def process_data(username, password):
 
     # Llamar a la función con datos de ejemplo
     create_excel_file(table_data)
-    print(ordenar_datos_por_ano_y_mes(table_data))
-
     driver.quit()
-
 
 class MyApp(App):
     def build(self):
@@ -399,3 +453,4 @@ class MyApp(App):
 
 if __name__ == "__main__":
     MyApp().run()
+

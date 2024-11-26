@@ -137,47 +137,6 @@ def process_data(username, password):
 
         return table_data
 
-    def ordenar_datos_por_ano_y_mes(table_data):
-        """
-        Organiza los datos en un diccionario estructurado por año y mes.
-        
-        Formato de salida:
-        {
-            año: {
-                mes: [
-                    [secuencia, organizacion, numero, horas],
-                    ...
-                ],
-                ...
-            },
-            ...
-        }
-        """
-        datos_ordenados = defaultdict(lambda: defaultdict(list))
-        
-        for item in table_data:
-            # Extraer los campos relevantes
-            secuencia, _, _, _, _, horas, fecha, _, organizacion, numero_escuela, _ = item
-            
-            # Separar la fecha de inicio y fin
-            fecha_inicio, fecha_fin = fecha.split(" al ")
-            fecha_inicio = datetime.strptime(fecha_inicio, "%d/%m/%Y")
-            fecha_fin = datetime.strptime(fecha_fin, "%d/%m/%Y")
-            
-            # Iterar entre los años y meses relevantes
-            for year in range(fecha_inicio.year, fecha_fin.year + 1):
-                for month in range(1, 13):
-                    # Validar si el mes y año están dentro del rango de las fechas
-                    if (year == fecha_inicio.year and month >= fecha_inicio.month) or \
-                    (year > fecha_inicio.year and year < fecha_fin.year) or \
-                    (year == fecha_fin.year and month <= fecha_fin.month):
-                        # Formar el registro para este mes
-                        registro = [secuencia, organizacion, numero_escuela, horas]
-                        datos_ordenados[year][month].append(registro)
-        
-        # Convertir defaultdict a dict para retornarlo
-        return {year: dict(months) for year, months in datos_ordenados.items()}
-
     # Función para verificar si hay una página siguiente
     def has_next_page(driver):
         try:
@@ -255,7 +214,7 @@ def process_data(username, password):
 
     # Esperar hasta que el botón "100" esté visible y clickeable
     boton_100 = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, "//button[span[text()='100']]"))
+        EC.element_to_be_clickable((By.XPATH, "//button[span[text()='25']]"))
     )
 
     # Hacer clic en el botón "100"
@@ -387,7 +346,7 @@ def process_data(username, password):
 
     # Llamar a la función con datos de ejemplo
     create_excel_file(table_data)
-    print(ordenar_datos_por_ano_y_mes(table_data))
+
 
     driver.quit()
 
