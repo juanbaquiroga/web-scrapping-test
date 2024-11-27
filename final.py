@@ -165,7 +165,7 @@ def process_data(username, password):
     def ordenar_datos_por_ano_y_mes(table_data):
         """
         Organiza los datos en un diccionario estructurado por año y mes.
-        
+
         Formato de salida:
         {
             año: {
@@ -189,16 +189,23 @@ def process_data(username, password):
             fecha_inicio = datetime.strptime(fecha_inicio, "%d/%m/%Y")
             fecha_fin = datetime.strptime(fecha_fin, "%d/%m/%Y")
             
-            # Iterar entre los años y meses relevantes
-            for year in range(fecha_inicio.year, fecha_fin.year + 1):
-                for month in range(1, 13):
-                    # Validar si el mes y año están dentro del rango de las fechas
-                    if (year == fecha_inicio.year and month >= fecha_inicio.month) or \
-                    (year > fecha_inicio.year and year < fecha_fin.year) or \
-                    (year == fecha_fin.year and month <= fecha_fin.month):
-                        # Formar el registro para este mes
-                        registro = [secuencia, organizacion, numero_escuela, horas]
-                        datos_ordenados[year][month].append(registro)
+            # Iterar por cada mes dentro del rango de fechas
+            current_date = fecha_inicio
+            while current_date <= fecha_fin:
+                year = current_date.year
+                month = current_date.month
+                
+                # Formar el registro para este mes
+                registro = [secuencia, organizacion, numero_escuela, horas]
+                datos_ordenados[year][month].append(registro)
+                
+                # Avanzar al siguiente mes
+                if current_date.month == 12:
+                    # Si es diciembre, avanzar al enero del próximo año
+                    current_date = current_date.replace(year=current_date.year + 1, month=1, day=1)
+                else:
+                    # Avanzar al primer día del siguiente mes
+                    current_date = current_date.replace(month=current_date.month + 1, day=1)
         
         # Convertir defaultdict a dict para retornarlo
         return {year: dict(months) for year, months in datos_ordenados.items()}
